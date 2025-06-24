@@ -13,7 +13,7 @@ import type { Expense } from "@shared/schema";
 
 const expenseFormSchema = z.object({
   description: z.string().min(1, "Description is required"),
-  amount: z.string().min(1, "Amount is required"),
+  amount: z.string().min(1, "Amount is required").transform((val) => val),
   category: z.string().min(1, "Category is required"),
   date: z.string().min(1, "Date is required"),
   receipt: z.string().optional(),
@@ -44,7 +44,7 @@ export default function ExpenseForm({ expense, onSuccess }: ExpenseFormProps) {
     resolver: zodResolver(expenseFormSchema),
     defaultValues: {
       description: expense?.description || "",
-      amount: expense?.amount || "",
+      amount: expense?.amount ? expense.amount.toString() : "",
       category: expense?.category || "",
       date: expense?.date ? new Date(expense.date).toISOString().split('T')[0] : "",
       receipt: expense?.receipt || "",
