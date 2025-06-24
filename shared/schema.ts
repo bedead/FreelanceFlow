@@ -1,9 +1,32 @@
-import { pgTable, text, serial, integer, decimal, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, decimal, timestamp, boolean, varchar, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Session storage table for Replit Auth
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table for Replit Auth
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().notNull(),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull(),
   company: text("company"),
@@ -14,6 +37,7 @@ export const clients = pgTable("clients", {
 
 export const invoices = pgTable("invoices", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
   number: text("number").notNull().unique(),
   clientId: integer("client_id").notNull(),
   issueDate: timestamp("issue_date").notNull(),
@@ -37,6 +61,7 @@ export const lineItems = pgTable("line_items", {
 
 export const expenses = pgTable("expenses", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
   description: text("description").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   category: text("category").notNull(),
@@ -59,6 +84,9 @@ export const insertLineItemSchema = createInsertSchema(lineItems).omit({
 export const insertExpenseSchema = createInsertSchema(expenses).omit({
   id: true,
 });
+
+export type UpsertUser = typeof users.$inferInsert;
+export type User = typeof users.$inferSelect;
 
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;

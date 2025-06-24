@@ -1,8 +1,11 @@
 import { 
+  users,
   clients, 
   invoices, 
   lineItems, 
   expenses,
+  type User,
+  type UpsertUser,
   type Client, 
   type InsertClient,
   type Invoice,
@@ -13,35 +16,41 @@ import {
   type InsertExpense,
   type InvoiceWithClient
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, and } from "drizzle-orm";
 
 export interface IStorage {
+  // User operations (required for Replit Auth)
+  getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
+
   // Client operations
-  getClients(): Promise<Client[]>;
-  getClient(id: number): Promise<Client | undefined>;
+  getClients(userId: string): Promise<Client[]>;
+  getClient(id: number, userId: string): Promise<Client | undefined>;
   createClient(client: InsertClient): Promise<Client>;
-  updateClient(id: number, client: Partial<InsertClient>): Promise<Client | undefined>;
-  deleteClient(id: number): Promise<boolean>;
+  updateClient(id: number, client: Partial<InsertClient>, userId: string): Promise<Client | undefined>;
+  deleteClient(id: number, userId: string): Promise<boolean>;
 
   // Invoice operations
-  getInvoices(): Promise<InvoiceWithClient[]>;
-  getInvoice(id: number): Promise<InvoiceWithClient | undefined>;
+  getInvoices(userId: string): Promise<InvoiceWithClient[]>;
+  getInvoice(id: number, userId: string): Promise<InvoiceWithClient | undefined>;
   createInvoice(invoice: InsertInvoice, lineItems: InsertLineItem[]): Promise<InvoiceWithClient>;
-  updateInvoice(id: number, invoice: Partial<InsertInvoice>): Promise<Invoice | undefined>;
-  deleteInvoice(id: number): Promise<boolean>;
+  updateInvoice(id: number, invoice: Partial<InsertInvoice>, userId: string): Promise<Invoice | undefined>;
+  deleteInvoice(id: number, userId: string): Promise<boolean>;
 
   // Line item operations
   getLineItemsByInvoice(invoiceId: number): Promise<LineItem[]>;
   updateLineItems(invoiceId: number, lineItems: InsertLineItem[]): Promise<LineItem[]>;
 
   // Expense operations
-  getExpenses(): Promise<Expense[]>;
-  getExpense(id: number): Promise<Expense | undefined>;
+  getExpenses(userId: string): Promise<Expense[]>;
+  getExpense(id: number, userId: string): Promise<Expense | undefined>;
   createExpense(expense: InsertExpense): Promise<Expense>;
-  updateExpense(id: number, expense: Partial<InsertExpense>): Promise<Expense | undefined>;
-  deleteExpense(id: number): Promise<boolean>;
+  updateExpense(id: number, expense: Partial<InsertExpense>, userId: string): Promise<Expense | undefined>;
+  deleteExpense(id: number, userId: string): Promise<boolean>;
 
   // Dashboard stats
-  getDashboardStats(): Promise<{
+  getDashboardStats(userId: string): Promise<{
     totalRevenue: number;
     outstanding: number;
     totalClients: number;
@@ -53,190 +62,207 @@ export interface IStorage {
   }>;
 }
 
-export class MemStorage implements IStorage {
-  private clients: Map<number, Client>;
-  private invoices: Map<number, Invoice>;
-  private lineItems: Map<number, LineItem>;
-  private expenses: Map<number, Expense>;
-  private currentClientId: number;
-  private currentInvoiceId: number;
-  private currentLineItemId: number;
-  private currentExpenseId: number;
-
-  constructor() {
-    this.clients = new Map();
-    this.invoices = new Map();
-    this.lineItems = new Map();
-    this.expenses = new Map();
-    this.currentClientId = 1;
-    this.currentInvoiceId = 1;
-    this.currentLineItemId = 1;
-    this.currentExpenseId = 1;
+export class DatabaseStorage implements IStorage {
+  // User operations (required for Replit Auth)
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
-  async getClients(): Promise<Client[]> {
-    return Array.from(this.clients.values());
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
   }
 
-  async getClient(id: number): Promise<Client | undefined> {
-    return this.clients.get(id);
+  // Client operations
+  async getClients(userId: string): Promise<Client[]> {
+    return await db.select().from(clients).where(eq(clients.userId, userId));
   }
 
-  async createClient(insertClient: InsertClient): Promise<Client> {
-    const id = this.currentClientId++;
-    const client: Client = { ...insertClient, id };
-    this.clients.set(id, client);
+  async getClient(id: number, userId: string): Promise<Client | undefined> {
+    const [client] = await db.select().from(clients).where(and(eq(clients.id, id), eq(clients.userId, userId)));
     return client;
   }
 
-  async updateClient(id: number, clientUpdate: Partial<InsertClient>): Promise<Client | undefined> {
-    const existing = this.clients.get(id);
-    if (!existing) return undefined;
-    
-    const updated = { ...existing, ...clientUpdate };
-    this.clients.set(id, updated);
-    return updated;
+  async createClient(insertClient: InsertClient): Promise<Client> {
+    const [client] = await db.insert(clients).values(insertClient).returning();
+    return client;
   }
 
-  async deleteClient(id: number): Promise<boolean> {
-    return this.clients.delete(id);
+  async updateClient(id: number, clientUpdate: Partial<InsertClient>, userId: string): Promise<Client | undefined> {
+    const [client] = await db
+      .update(clients)
+      .set(clientUpdate)
+      .where(and(eq(clients.id, id), eq(clients.userId, userId)))
+      .returning();
+    return client;
   }
 
-  async getInvoices(): Promise<InvoiceWithClient[]> {
-    const invoiceList = Array.from(this.invoices.values());
+  async deleteClient(id: number, userId: string): Promise<boolean> {
+    const result = await db.delete(clients).where(and(eq(clients.id, id), eq(clients.userId, userId)));
+    return result.rowCount > 0;
+  }
+
+  // Invoice operations
+  async getInvoices(userId: string): Promise<InvoiceWithClient[]> {
+    const invoiceResults = await db
+      .select()
+      .from(invoices)
+      .leftJoin(clients, eq(invoices.clientId, clients.id))
+      .where(eq(invoices.userId, userId));
+
     const result: InvoiceWithClient[] = [];
+    for (const row of invoiceResults) {
+      if (row.clients) {
+        const invoiceLineItems = await db
+          .select()
+          .from(lineItems)
+          .where(eq(lineItems.invoiceId, row.invoices.id));
 
-    for (const invoice of invoiceList) {
-      const client = this.clients.get(invoice.clientId);
-      const invoiceLineItems = Array.from(this.lineItems.values())
-        .filter(item => item.invoiceId === invoice.id);
-      
-      if (client) {
         result.push({
-          ...invoice,
-          client,
+          ...row.invoices,
+          client: row.clients,
           lineItems: invoiceLineItems
         });
       }
     }
-
     return result;
   }
 
-  async getInvoice(id: number): Promise<InvoiceWithClient | undefined> {
-    const invoice = this.invoices.get(id);
-    if (!invoice) return undefined;
+  async getInvoice(id: number, userId: string): Promise<InvoiceWithClient | undefined> {
+    const [invoiceResult] = await db
+      .select()
+      .from(invoices)
+      .leftJoin(clients, eq(invoices.clientId, clients.id))
+      .where(and(eq(invoices.id, id), eq(invoices.userId, userId)));
 
-    const client = this.clients.get(invoice.clientId);
-    if (!client) return undefined;
+    if (!invoiceResult || !invoiceResult.clients) return undefined;
 
-    const invoiceLineItems = Array.from(this.lineItems.values())
-      .filter(item => item.invoiceId === invoice.id);
+    const invoiceLineItems = await db
+      .select()
+      .from(lineItems)
+      .where(eq(lineItems.invoiceId, id));
 
     return {
-      ...invoice,
-      client,
+      ...invoiceResult.invoices,
+      client: invoiceResult.clients,
       lineItems: invoiceLineItems
     };
   }
 
   async createInvoice(insertInvoice: InsertInvoice, insertLineItems: InsertLineItem[]): Promise<InvoiceWithClient> {
-    const id = this.currentInvoiceId++;
-    const invoice: Invoice = { ...insertInvoice, id };
-    this.invoices.set(id, invoice);
+    const [invoice] = await db.insert(invoices).values(insertInvoice).returning();
 
     const createdLineItems: LineItem[] = [];
     for (const insertLineItem of insertLineItems) {
-      const lineItemId = this.currentLineItemId++;
-      const lineItem: LineItem = { ...insertLineItem, id: lineItemId, invoiceId: id };
-      this.lineItems.set(lineItemId, lineItem);
+      const [lineItem] = await db
+        .insert(lineItems)
+        .values({ ...insertLineItem, invoiceId: invoice.id })
+        .returning();
       createdLineItems.push(lineItem);
     }
 
-    const client = this.clients.get(invoice.clientId)!;
+    const [client] = await db.select().from(clients).where(eq(clients.id, invoice.clientId));
+    
     return {
       ...invoice,
-      client,
+      client: client!,
       lineItems: createdLineItems
     };
   }
 
-  async updateInvoice(id: number, invoiceUpdate: Partial<InsertInvoice>): Promise<Invoice | undefined> {
-    const existing = this.invoices.get(id);
-    if (!existing) return undefined;
-    
-    const updated = { ...existing, ...invoiceUpdate };
-    this.invoices.set(id, updated);
-    return updated;
+  async updateInvoice(id: number, invoiceUpdate: Partial<InsertInvoice>, userId: string): Promise<Invoice | undefined> {
+    const [invoice] = await db
+      .update(invoices)
+      .set(invoiceUpdate)
+      .where(and(eq(invoices.id, id), eq(invoices.userId, userId)))
+      .returning();
+    return invoice;
   }
 
-  async deleteInvoice(id: number): Promise<boolean> {
-    // Also delete associated line items
-    const lineItemsToDelete = Array.from(this.lineItems.entries())
-      .filter(([_, item]) => item.invoiceId === id)
-      .map(([itemId]) => itemId);
+  async deleteInvoice(id: number, userId: string): Promise<boolean> {
+    // Delete associated line items first
+    await db.delete(lineItems).where(eq(lineItems.invoiceId, id));
     
-    lineItemsToDelete.forEach(itemId => this.lineItems.delete(itemId));
-    
-    return this.invoices.delete(id);
+    // Delete the invoice
+    const result = await db.delete(invoices).where(and(eq(invoices.id, id), eq(invoices.userId, userId)));
+    return result.rowCount > 0;
   }
 
+  // Line item operations
   async getLineItemsByInvoice(invoiceId: number): Promise<LineItem[]> {
-    return Array.from(this.lineItems.values())
-      .filter(item => item.invoiceId === invoiceId);
+    return await db.select().from(lineItems).where(eq(lineItems.invoiceId, invoiceId));
   }
 
   async updateLineItems(invoiceId: number, insertLineItems: InsertLineItem[]): Promise<LineItem[]> {
     // Delete existing line items for this invoice
-    const existingIds = Array.from(this.lineItems.entries())
-      .filter(([_, item]) => item.invoiceId === invoiceId)
-      .map(([id]) => id);
-    
-    existingIds.forEach(id => this.lineItems.delete(id));
+    await db.delete(lineItems).where(eq(lineItems.invoiceId, invoiceId));
 
     // Create new line items
     const createdLineItems: LineItem[] = [];
     for (const insertLineItem of insertLineItems) {
-      const id = this.currentLineItemId++;
-      const lineItem: LineItem = { ...insertLineItem, id, invoiceId };
-      this.lineItems.set(id, lineItem);
+      const [lineItem] = await db
+        .insert(lineItems)
+        .values({ ...insertLineItem, invoiceId })
+        .returning();
       createdLineItems.push(lineItem);
     }
 
     return createdLineItems;
   }
 
-  async getExpenses(): Promise<Expense[]> {
-    return Array.from(this.expenses.values());
+  // Expense operations
+  async getExpenses(userId: string): Promise<Expense[]> {
+    return await db.select().from(expenses).where(eq(expenses.userId, userId));
   }
 
-  async getExpense(id: number): Promise<Expense | undefined> {
-    return this.expenses.get(id);
-  }
-
-  async createExpense(insertExpense: InsertExpense): Promise<Expense> {
-    const id = this.currentExpenseId++;
-    const expense: Expense = { ...insertExpense, id };
-    this.expenses.set(id, expense);
+  async getExpense(id: number, userId: string): Promise<Expense | undefined> {
+    const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, id), eq(expenses.userId, userId)));
     return expense;
   }
 
-  async updateExpense(id: number, expenseUpdate: Partial<InsertExpense>): Promise<Expense | undefined> {
-    const existing = this.expenses.get(id);
-    if (!existing) return undefined;
-    
-    const updated = { ...existing, ...expenseUpdate };
-    this.expenses.set(id, updated);
-    return updated;
+  async createExpense(insertExpense: InsertExpense): Promise<Expense> {
+    const [expense] = await db.insert(expenses).values(insertExpense).returning();
+    return expense;
   }
 
-  async deleteExpense(id: number): Promise<boolean> {
-    return this.expenses.delete(id);
+  async updateExpense(id: number, expenseUpdate: Partial<InsertExpense>, userId: string): Promise<Expense | undefined> {
+    const [expense] = await db
+      .update(expenses)
+      .set(expenseUpdate)
+      .where(and(eq(expenses.id, id), eq(expenses.userId, userId)))
+      .returning();
+    return expense;
   }
 
-  async getDashboardStats() {
-    const allInvoices = Array.from(this.invoices.values());
-    const allExpenses = Array.from(this.expenses.values());
+  async deleteExpense(id: number, userId: string): Promise<boolean> {
+    const result = await db.delete(expenses).where(and(eq(expenses.id, id), eq(expenses.userId, userId)));
+    return result.rowCount > 0;
+  }
+
+  // Dashboard stats
+  async getDashboardStats(userId: string): Promise<{
+    totalRevenue: number;
+    outstanding: number;
+    totalClients: number;
+    thisMonth: number;
+    revenueGrowth: number;
+    outstandingCount: number;
+    activeClients: number;
+    monthlyInvoices: number;
+  }> {
+    const allInvoices = await db.select().from(invoices).where(eq(invoices.userId, userId));
+    const allClients = await db.select().from(clients).where(eq(clients.userId, userId));
     
     const paidInvoices = allInvoices.filter(inv => inv.status === 'paid');
     const outstandingInvoices = allInvoices.filter(inv => inv.status === 'sent' || inv.status === 'overdue');
@@ -257,14 +283,14 @@ export class MemStorage implements IStorage {
     return {
       totalRevenue,
       outstanding,
-      totalClients: this.clients.size,
+      totalClients: allClients.length,
       thisMonth,
       revenueGrowth: 12.5, // Mock growth percentage
       outstandingCount: outstandingInvoices.length,
-      activeClients: Math.floor(this.clients.size * 0.6), // Mock active clients
+      activeClients: Math.floor(allClients.length * 0.6), // Mock active clients
       monthlyInvoices: thisMonthInvoices.length,
     };
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
