@@ -69,6 +69,18 @@ export const expenses = pgTable("expenses", {
   receipt: text("receipt"), // URL or file path
 });
 
+// --- Custom Field Preprocessors ---
+
+const zodDate = z.preprocess(
+  (val) => (typeof val === "string" || val instanceof Date ? new Date(val) : val),
+  z.date({ required_error: "Date is required" })
+);
+
+const zodDecimal = z.preprocess(
+  (val) => (typeof val === "string" ? parseFloat(val) : val),
+  z.number()
+);
+
 export const insertClientSchema = createInsertSchema(clients).omit({
   id: true,
   userId: true,
@@ -77,15 +89,28 @@ export const insertClientSchema = createInsertSchema(clients).omit({
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({
   id: true,
   userId: true,
+}).extend({
+  issueDate: zodDate,
+  dueDate: zodDate,
+  subtotal: zodDecimal,
+  tax: zodDecimal,
+  total: zodDecimal,
 });
 
 export const insertLineItemSchema = createInsertSchema(lineItems).omit({
   id: true,
+}).extend({
+  quantity: zodDecimal,
+  rate: zodDecimal,
+  total: zodDecimal,
 });
 
 export const insertExpenseSchema = createInsertSchema(expenses).omit({
   id: true,
   userId: true,
+}).extend({
+  date: zodDate,
+  amount: zodDecimal,
 });
 
 export type UpsertUser = typeof users.$inferInsert;

@@ -130,6 +130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(invoice);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.log(error.errors)
         return res.status(400).json({ message: "Invalid invoice data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create invoice" });
@@ -209,6 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(expense);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.log(error.errors)
         return res.status(400).json({ message: "Invalid expense data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create expense" });

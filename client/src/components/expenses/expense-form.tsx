@@ -15,7 +15,10 @@ const expenseFormSchema = z.object({
   description: z.string().min(1, "Description is required"),
   amount: z.string().min(1, "Amount is required"),
   category: z.string().min(1, "Category is required"),
-  date: z.string().min(1, "Date is required").transform((val) => new Date(val)),
+  date: z.preprocess(
+    (val) => (typeof val === "string" || val instanceof Date ? new Date(val) : val),
+    z.date({ required_error: "Date is required" })
+  ),
   receipt: z.string().optional(),
 });
 

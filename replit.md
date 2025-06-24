@@ -102,11 +102,21 @@ The application is configured for deployment on Replit's infrastructure:
 - **Database**: Uses DATABASE_URL environment variable
 - **Build Process**: Two-stage build (frontend assets + backend bundle)
 
+## Recent Changes
+
+- **June 24, 2025**: Initial application setup with React frontend and Express backend
+- **June 24, 2025**: Implemented Replit Auth integration with secure session management
+- **June 24, 2025**: Added PostgreSQL database with user isolation for all data models
+- **June 24, 2025**: Fixed expense validation issues - resolved date field conversion from string to Date object
+- **June 24, 2025**: Updated all database queries to use proper AND conditions for user data filtering
+- **June 24, 2025**: Created landing page for unauthenticated users and updated sidebar with user profile display
+
 ## Changelog
 
 ```
 Changelog:
-- June 24, 2025. Initial setup
+- June 24, 2025. Initial setup with full authentication and database integration
+- June 24, 2025. Fixed expense creation validation and user data isolation
 ```
 
 ## User Preferences
