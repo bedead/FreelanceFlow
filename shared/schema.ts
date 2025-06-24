@@ -71,10 +71,12 @@ export const expenses = pgTable("expenses", {
 
 export const insertClientSchema = createInsertSchema(clients).omit({
   id: true,
+  userId: true,
 });
 
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({
   id: true,
+  userId: true,
 });
 
 export const insertLineItemSchema = createInsertSchema(lineItems).omit({
@@ -83,6 +85,7 @@ export const insertLineItemSchema = createInsertSchema(lineItems).omit({
 
 export const insertExpenseSchema = createInsertSchema(expenses).omit({
   id: true,
+  userId: true,
 });
 
 export type UpsertUser = typeof users.$inferInsert;
