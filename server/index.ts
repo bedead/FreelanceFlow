@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { reminderScheduler } from "./scheduler";
 
 const app = express();
 app.use(express.json());
@@ -66,5 +67,15 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    log(`email reminder scheduler: ${reminderScheduler.getStatus().emailConfigured ? 'configured' : 'not configured'}`);
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('Received SIGTERM, shutting down gracefully');
+    reminderScheduler.stop();
+    server.close(() => {
+      console.log('Process terminated');
+    });
   });
 })();

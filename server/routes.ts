@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { emailService } from "./email";
+import { reminderScheduler } from "./scheduler";
 import { insertClientSchema, insertInvoiceSchema, insertExpenseSchema, insertLineItemSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -257,6 +259,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(stats);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch dashboard stats" });
+    }
+  });
+
+  // Email and reminder routes
+  app.post("/api/invoices/:id/send", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      const invoice = await storage.getInvoice(id, userId);
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      const success = await emailService.sendInvoice(invoice);
+      if (success) {
+        res.json({ message: "Invoice sent successfully" });
+      } else {
+        res.status(500).json({ message: "Failed to send invoice - email service not configured" });
+      }
+    } catch (error) {
+      console.error("Error sending invoice:", error);
+      res.status(500).json({ message: "Failed to send invoice" });
+    }
+  });
+
+  app.post("/api/invoices/:id/remind", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+      const { type = 'due_soon' } = req.body;
+      
+      const invoice = await storage.getInvoice(id, userId);
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      const success = await emailService.sendInvoiceReminder(invoice, type);
+      if (success) {
+        res.json({ message: "Reminder sent successfully" });
+      } else {
+        res.status(500).json({ message: "Failed to send reminder - email service not configured" });
+      }
+    } catch (error) {
+      console.error("Error sending reminder:", error);
+      res.status(500).json({ message: "Failed to send reminder" });
+    }
+  });
+
+  // Email configuration status
+  app.get("/api/email/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const status = {
+        configured: emailService.isConfigured(),
+        scheduler: reminderScheduler.getStatus()
+      };
+      res.json(status);
+    } catch (error) {
+      console.error("Error getting email status:", error);
+      res.status(500).json({ message: "Failed to get email status" });
     }
   });
 

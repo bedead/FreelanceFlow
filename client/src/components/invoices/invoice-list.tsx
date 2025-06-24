@@ -12,13 +12,15 @@ interface InvoiceListProps {
   isLoading: boolean;
   onEditInvoice: (invoice: InvoiceWithClient) => void;
   onSendInvoice: (invoiceId: number) => void;
+  onSendReminder: (invoiceId: number, type: 'due_soon' | 'overdue') => void;
 }
 
 export default function InvoiceList({ 
   invoices, 
   isLoading, 
   onEditInvoice, 
-  onSendInvoice 
+  onSendInvoice,
+  onSendReminder
 }: InvoiceListProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -139,6 +141,33 @@ export default function InvoiceList({
                       >
                         <Send className="w-4 h-4" />
                       </Button>
+                    )}
+                    {invoice.status === 'pending' && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem 
+                            onClick={() => onSendReminder(invoice.id, 'due_soon')}
+                            className="flex items-center gap-2"
+                          >
+                            <Bell className="w-4 h-4" />
+                            Send Reminder
+                          </DropdownMenuItem>
+                          {getDueDateStatus(invoice.dueDate, invoice.status) === 'overdue' && (
+                            <DropdownMenuItem 
+                              onClick={() => onSendReminder(invoice.id, 'overdue')}
+                              className="flex items-center gap-2 text-red-600"
+                            >
+                              <AlertTriangle className="w-4 h-4" />
+                              Send Overdue Notice
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </div>
                 </TableCell>
